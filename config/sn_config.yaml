@@ -1,0 +1,78 @@
+# S-N疲劳数据分析配置文件
+
+# LLM配置
+LLM:
+  MODEL: "deepseek-chat"
+  TEMPERATURE: 0.05
+  API_KEY: "sk-90627f14c70c47bcaa7770a4911e3b9f"
+
+# ==============================================================================
+# ASTM E739 S-N 疲劳数据统计分析配置 (集成自S-N-E739系统)
+# ==============================================================================
+
+# 回归方法选择配置
+REGRESSION:
+  # 可选值: OLS, WLS, ROBUST, MLE
+  # ADAPTIVE：程序将根据诊断结果 (异方差性, 离群点) 自动选择最合适的修正方法。
+  METHOD_SELECTION: 'ADAPTIVE'
+  # 如果使用 MLE，需要确保 CSV 中包含 'Status' 列 (1=失效, 0=存活/截尾)
+  STATUS_COLUMN_NAME: 'Status'
+
+# 评分和统计配置
+SCORING:
+  MAX_SCORE: 100                 # 总分最大值
+  R2_WEIGHT: 0.4                 # R^2 分数权重 (40%)
+  SIGMA_WEIGHT: 0.2              # 分散性 (Sigma) 分数权重 (20%)
+  SIGMA_EXCELLENT_THRESHOLD: 0.040   # 优秀线 (Sigma_E)，达到或低于此值获得满分
+  SIGMA_POOR_THRESHOLD: 0.100        # 及格/不及格线 (Sigma_P)，高于此值得分快速降为 0
+  BP_WEIGHT: 0.2                 # 异方差性 (BP) 分数权重 (20%)
+  K_WEIGHT: 0.2                  # 样本量 (K) 奖励权重 (20%)
+  SIGMA_PENALTY_FACTOR: 500      # Sigma 惩罚敏感度
+  MIN_K_THRESHOLD: 15            # 样本量低于此值将受到惩罚
+
+# 设计与推断配置
+DESIGN:
+  PS_DESIGN_95: 0.95             # 95% 存活概率 (单侧设计曲线)
+  ALPHA_CRITICAL: 0.05           # 置信区间 alpha 值 (用于 95% 双侧区间)
+  BP_P_THRESHOLD: 0.05           # Breusch-Pagan 检验的 P 值显著性阈值
+  OUTLIER_SIGMA_THRESHOLD: 3.0   # 标准化残差离群点阈值 (3 sigma)
+  COOKS_D_THRESHOLD_FACTOR: 4    # Cook's D 阈值分子 (4/k)
+
+# 输出和可视化配置
+OUTPUT:
+  VISUALIZATION_ENABLED: True    # True: 生成 PNG 图表并显示
+  FONT_PATH: 'C:/Windows/Fonts/simhei.ttf' # 中文字体路径
+  RESULT_DIR: 'result'           # 结果输出目录
+
+# 数据配置
+DATA:
+  S_COLUMN_NAME: 'S'             # CSV 中应力 S 对应的列名
+  N_COLUMN_NAME: 'N'             # CSV 中寿命 N 对应的列名
+
+# E739系统集成配置
+E739_INTEGRATION:
+  ENABLED: True                  # 是否启用E739统计分析
+  SOURCE_PATH: 'src/S-N-E739'   # E739源代码路径（相对于项目根目录）
+  TEMP_DIR: 'temp'              # 临时文件目录
+
+# 提示词配置
+PROMPTS:
+  # 默认S-N数据分析提示词
+  DEFAULT_ANALYSIS: |
+    请你扮演一位资深的材料疲劳试验与统计分析专家。你的任务是根据ASTM E466（恒幅疲劳试验标准）的要求，对一份S-N试验数据报告进行全面的数据质量与适用性评估。
+
+    假设提供以下数据：
+    试验结果数据：每组数据点包含应力幅与失效周期。
+    试验元数据：疲劳报告中必须报告的关键参数。
+
+    ASTM E466 试验执行与元数据质量评估（100分）
+    检查并评估以下关键元数据的完整性和对应力-寿命曲线的潜在影响：（25分）
+    试验类型与负载条件：确认测试类型（轴向、弯曲等），检查应力比R是否为常数，并评估多个R值对单一S-N曲线建模的影响。（25分）
+    试验环境与频率：检查环境温度和湿度是否报告，检查试验频率并评估其在不同应力水平下可能引入的温升或应变率效应。（25分）
+    试样描述：确认材料、表面处理及尺寸报告是否完整，评估试样准备差异是否可能导致数据分散性高。（25分）
+
+    总结结论
+    基于以上综合分析，给出数据集的总体质量等级（高、中、低），根据具体的情况给分，需保证相同数据每次打出相近分数，并明确建议：
+    该数据集是否足够可靠，可以单独用于建立工程设计曲线？
+    如果不可靠，建议采取哪些修正措施（例如增加样本、处理离群值、使用最大似然估计分析中止点等）。
+

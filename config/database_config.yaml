@@ -1,0 +1,243 @@
+# 数据库配置文件
+# 用于配置各种数据库连接参数
+
+# MySQL配置
+mysql:
+  # 开发环境
+  development:
+    host: localhost
+    port: 3306
+    database: xrd_lab
+    user: root
+    password: "1234"
+    
+  # 生产环境
+  production:
+    host: prod-mysql-server.company.com
+    port: 3306
+    database: materials_prod
+    user: prod_user
+    password: ${MYSQL_PROD_PASSWORD}  # 使用环境变量
+    
+  # 常用查询模板
+  queries:
+    xrd_experiments: |
+      SELECT 
+        sample_id,
+        material_composition,
+        preparation_method,
+        radiation_source,
+        tube_voltage,
+        tube_current,
+        scan_range_2theta,
+        step_size,
+        scan_mode,
+        instrument_model,
+        manufacturer,
+        data_format,
+        image_quality,
+        unit_annotation,
+        calibration_info,
+        test_environment
+      FROM xrd_experiments 
+      WHERE experiment_date >= %s
+      ORDER BY experiment_date DESC
+      
+    sn_fatigue_data: |
+      SELECT 
+        test_id,
+        stress_amplitude as S,
+        cycles_to_failure as N,
+        material_type,
+        test_frequency,
+        temperature,
+        stress_ratio,
+        test_standard,
+        specimen_geometry,
+        surface_treatment,
+        failure_mode,
+        test_status,
+        data_validation,
+        test_date
+      FROM sn_fatigue_tests
+      WHERE test_status IN ('completed', 'runout')
+        AND stress_amplitude > 0
+        AND cycles_to_failure > 0
+      ORDER BY stress_amplitude DESC
+
+# PostgreSQL配置
+postgresql:
+  # 开发环境
+  development:
+    host: localhost
+    port: 5432
+    database: materials_lab_dev
+    user: postgres
+    password: dev_password
+    
+  # 生产环境
+  production:
+    host: prod-postgres-server.company.com
+    port: 5432
+    database: materials_lab_prod
+    user: lab_user
+    password: ${POSTGRES_PROD_PASSWORD}
+    
+  # 本地开发环境
+  local:
+    host: localhost
+    port: 5432
+    database: materials_lab_dev
+    user: postgres
+    password: "1234"
+    
+  # 查询模板
+  queries:
+    xrd_with_joins: |
+      SELECT 
+        e.experiment_id,
+        s.sample_name,
+        s.material_composition,
+        s.preparation_method,
+        e.radiation_source,
+        e.tube_voltage,
+        e.tube_current,
+        e.scan_range_2theta,
+        e.step_size,
+        e.scan_mode,
+        i.instrument_model,
+        i.manufacturer,
+        e.data_format,
+        e.image_quality,
+        e.unit_annotation,
+        e.calibration_info,
+        e.test_environment
+      FROM xrd_experiments e
+      JOIN samples s ON e.sample_id = s.sample_id
+      JOIN instruments i ON e.instrument_id = i.instrument_id
+      WHERE e.experiment_date >= $1
+        AND e.data_quality_flag = 'approved'
+      ORDER BY e.experiment_date DESC
+      
+    fatigue_analysis: |
+      SELECT 
+        ft.test_id,
+        ft.stress_amplitude as S,
+        ft.cycles_to_failure as N,
+        m.material_name,
+        m.material_grade,
+        ft.test_frequency,
+        ft.temperature,
+        ft.stress_ratio,
+        ft.specimen_geometry,
+        ft.surface_treatment,
+        ft.test_standard,
+        ft.failure_mode
+      FROM fatigue_tests ft
+      JOIN materials m ON ft.material_id = m.material_id
+      WHERE ft.test_status = 'completed'
+        AND ft.data_validation = 'passed'
+      ORDER BY ft.stress_amplitude DESC
+
+# MongoDB配置
+mongodb:
+  # 开发环境
+  development:
+    host: localhost
+    port: 27017
+    database: materials_mongo_dev
+    username: null  # 无认证
+    password: null
+    
+  # 生产环境
+  production:
+    host: prod-mongo-cluster.company.com
+    port: 27017
+    database: materials_mongo_prod
+    username: mongo_user
+    password: ${MONGO_PROD_PASSWORD}
+    
+  # 集合和查询模板
+  collections:
+    xrd_experiments:
+      name: xrd_experiments
+      query_templates:
+        recent_high_quality: |
+          {
+            "experiment_date": {"$gte": "2024-01-01"},
+            "data_quality": "high",
+            "instrument.manufacturer": {"$in": ["Bruker", "Rigaku", "PANalytical"]},
+            "quality_metrics.signal_noise_ratio": {"$gte": 10}
+          }
+        by_material: |
+          {
+            "sample.composition": {"$regex": "%s", "$options": "i"},
+            "status": "approved"
+          }
+          
+    fatigue_data:
+      name: fatigue_tests
+      query_templates:
+        completed_tests: |
+          {
+            "test_status": "completed",
+            "results.stress_amplitude": {"$gt": 0},
+            "results.cycles_to_failure": {"$gt": 0},
+            "data_quality": "validated"
+          }
+        by_material_type: |
+          {
+            "material.type": {"$regex": "%s", "$options": "i"},
+            "test_conditions.test_type": "fatigue"
+          }
+
+# 数据源映射配置
+data_source_mapping:
+  # XRD数据源优先级
+  xrd_sources:
+    - type: postgresql
+      environment: production
+      table: xrd_experiments
+      priority: 1
+    - type: mysql
+      environment: development
+      table: xrd_experiments
+      priority: 2
+    - type: mongodb
+      environment: production
+      collection: xrd_experiments
+      priority: 3
+      
+  # S-N数据源优先级
+  sn_sources:
+    - type: postgresql
+      environment: production
+      table: fatigue_tests
+      priority: 1
+    - type: mysql
+      environment: development
+      table: fatigue_tests
+      priority: 2
+    - type: mongodb
+      environment: production
+      collection: fatigue_data
+      priority: 3
+
+# 连接池配置
+connection_pools:
+  mysql:
+    pool_size: 5
+    max_overflow: 10
+    pool_timeout: 30
+    pool_recycle: 3600
+    
+  postgresql:
+    pool_size: 5
+    max_overflow: 10
+    pool_timeout: 30
+    pool_recycle: 3600
+    
+  mongodb:
+    max_pool_size: 10
+    min_pool_size: 1
+    max_idle_time_ms: 30000
